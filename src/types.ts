@@ -51,6 +51,7 @@ export interface FeatureFlagEvaluation {
 }
 
 export interface FeatureFlagEvaluationRequest {
+  evaluationId?: string;
   keys: string[];
   subjectId: string;
   anonymousId?: string;

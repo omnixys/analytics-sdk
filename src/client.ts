@@ -150,6 +150,7 @@ export class AnalyticsClient {
     const cached = this.featureFlagCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.evaluation;
     const evaluations = await this.featureFlagTransport.evaluate({
+      evaluationId: randomId(),
       keys: [key],
       subjectId,
       anonymousId: this.anonymousId,
