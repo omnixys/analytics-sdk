@@ -66,7 +66,8 @@ export interface FeatureFlagTransport {
 }
 
 export interface AnalyticsConfig {
-  writeKey: string;
+  writeKey?: string;
+  tokenProvider?: AnalyticsTokenProvider;
   endpoint: string;
   enabled?: boolean;
   consent?: ConsentState;
@@ -81,6 +82,14 @@ export interface AnalyticsConfig {
   featureFlagCacheTtlMs?: number;
   context?: () => Record<string, unknown>;
 }
+
+export interface AnalyticsTokenRequest {
+  forceRefresh: boolean;
+}
+
+export type AnalyticsTokenProvider = (
+  request: AnalyticsTokenRequest,
+) => Promise<string>;
 
 export interface EventOptions {
   occurredAt?: Date;

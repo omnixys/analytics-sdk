@@ -1,6 +1,7 @@
 import { sanitizeProperties } from "./sanitize.js";
 import {
   AnalyticsTransportError,
+  AnalyticsTokenManager,
   FetchAnalyticsTransport,
   FetchFeatureFlagTransport,
 } from "./transport.js";
@@ -40,9 +41,12 @@ export class AnalyticsClient {
   private sessionId = randomId();
   private lastActivity = Date.now();
   private flushing?: Promise<void>;
+  private removeLifecycleListeners?: () => void;
 
   constructor(config: AnalyticsConfig) {
-    if (!config.writeKey) throw new TypeError("Analytics writeKey is required");
+    if (!config.writeKey && !config.tokenProvider) {
+      throw new TypeError("Analytics writeKey or tokenProvider is required");
+    }
     if (!config.endpoint) throw new TypeError("Analytics endpoint is required");
     this.enabled = config.enabled ?? true;
     this.consent = config.consent ?? "unknown";
@@ -57,12 +61,16 @@ export class AnalyticsClient {
     );
     this.schemaVersion = config.schemaVersion ?? "1.0";
     this.contextFactory = config.context;
+    const tokens = new AnalyticsTokenManager(
+      config.writeKey,
+      config.tokenProvider,
+    );
     this.transport =
       config.transport ??
-      new FetchAnalyticsTransport(config.endpoint, config.writeKey);
+      new FetchAnalyticsTransport(config.endpoint, tokens);
     this.featureFlagTransport =
       config.featureFlagTransport ??
-      new FetchFeatureFlagTransport(config.endpoint, config.writeKey);
+      new FetchFeatureFlagTransport(config.endpoint, tokens);
     this.featureFlagCacheTtlMs = bounded(
       config.featureFlagCacheTtlMs ?? 30_000,
       1_000,
@@ -71,6 +79,9 @@ export class AnalyticsClient {
     if (this.enabled) {
       this.timer = setInterval(() => void this.flush(), this.flushIntervalMs);
       (this.timer as unknown as { unref?: () => void }).unref?.();
+      this.removeLifecycleListeners = registerLifecycleFlush(() => {
+        void this.flush();
+      });
     }
   }
 
@@ -128,7 +139,13 @@ export class AnalyticsClient {
 
   setConsent(consent: ConsentState): void {
     this.consent = consent;
-    if (consent === "denied") this.queue.length = 0;
+    if (consent !== "granted") {
+      this.queue.length = 0;
+      this.userId = undefined;
+      this.anonymousId = randomId();
+      this.sessionId = randomId();
+      this.featureFlagCache.clear();
+    }
   }
 
   async getFeatureFlag(
@@ -144,7 +161,7 @@ export class AnalyticsClient {
     key: string,
     facts: Record<string, unknown> = {},
   ): Promise<FeatureFlagEvaluation | undefined> {
-    if (!this.enabled) return undefined;
+    if (!this.enabled || this.consent !== "granted") return undefined;
     const subjectId = this.userId ?? this.anonymousId;
     const cacheKey = `${key}:${subjectId}:${stableJson(facts)}`;
     const cached = this.featureFlagCache.get(cacheKey);
@@ -173,7 +190,7 @@ export class AnalyticsClient {
 
   async flush(): Promise<void> {
     if (this.flushing) return this.flushing;
-    if (!this.enabled || this.consent === "denied" || this.queue.length === 0) {
+    if (!this.enabled || this.consent !== "granted" || this.queue.length === 0) {
       return;
     }
     const events = this.queue.splice(0, 100);
@@ -207,6 +224,8 @@ export class AnalyticsClient {
   async shutdown(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.removeLifecycleListeners?.();
+    this.removeLifecycleListeners = undefined;
     await this.flush();
   }
 
@@ -223,7 +242,7 @@ export class AnalyticsClient {
     groupId?: string,
   ): string {
     const eventId = randomId();
-    if (!this.enabled || this.consent === "denied") return eventId;
+    if (!this.enabled || this.consent !== "granted") return eventId;
     const now = Date.now();
     if (now - this.lastActivity > this.sessionTimeoutMs) {
       this.sessionId = randomId();
@@ -251,6 +270,29 @@ export class AnalyticsClient {
     if (this.queue.length >= this.flushAt) void this.flush();
     return eventId;
   }
+}
+
+function registerLifecycleFlush(flush: () => void): (() => void) | undefined {
+  const target = globalThis as typeof globalThis & {
+    addEventListener?: (type: string, listener: () => void) => void;
+    removeEventListener?: (type: string, listener: () => void) => void;
+    document?: {
+      visibilityState?: string;
+      addEventListener?: (type: string, listener: () => void) => void;
+      removeEventListener?: (type: string, listener: () => void) => void;
+    };
+  };
+  if (!target.addEventListener) return undefined;
+  const pageHide = () => flush();
+  const visibility = () => {
+    if (target.document?.visibilityState === "hidden") flush();
+  };
+  target.addEventListener("pagehide", pageHide);
+  target.document?.addEventListener?.("visibilitychange", visibility);
+  return () => {
+    target.removeEventListener?.("pagehide", pageHide);
+    target.document?.removeEventListener?.("visibilitychange", visibility);
+  };
 }
 
 function randomId(): string {

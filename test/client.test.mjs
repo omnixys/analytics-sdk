@@ -44,6 +44,55 @@ test("drops events when consent is denied", async () => {
   assert.equal(client.pending(), 0);
 });
 
+test("does not queue or request while consent is unknown", async () => {
+  let calls = 0;
+  const client = new AnalyticsClient({
+    writeKey: "write-key",
+    endpoint: "https://analytics.example.test",
+    transport: { async send() { calls += 1; } },
+  });
+  client.track("ShouldNotBeQueued");
+  await client.flush();
+  assert.equal(client.pending(), 0);
+  assert.equal(calls, 0);
+  await client.shutdown();
+});
+
+test("parallel 401 responses share exactly one token refresh", async () => {
+  const { AnalyticsTokenManager, FetchAnalyticsTransport } =
+    await import("../dist/transport.js");
+  let providerCalls = 0;
+  const manager = new AnalyticsTokenManager(undefined, async () => {
+    providerCalls += 1;
+    return providerCalls === 1 ? "expired" : "fresh";
+  });
+  const fetcher = async (_url, init) => {
+    const token = init.headers.authorization;
+    return new Response(null, {
+      status: token.endsWith("expired") ? 401 : 202,
+    });
+  };
+  const transports = [
+    new FetchAnalyticsTransport(
+      "https://analytics.example.test",
+      manager,
+      fetcher,
+    ),
+    new FetchAnalyticsTransport(
+      "https://analytics.example.test",
+      manager,
+      fetcher,
+    ),
+  ];
+  const batch = {
+    batchId: crypto.randomUUID(),
+    sentAt: new Date().toISOString(),
+    events: [],
+  };
+  await Promise.all(transports.map((transport) => transport.send(batch)));
+  assert.equal(providerCalls, 2);
+});
+
 test("requeues retryable transport failures", async () => {
   const client = new AnalyticsClient({
     writeKey: "write-key",
@@ -68,6 +117,7 @@ test("evaluates and caches feature flags per subject and facts", async () => {
     writeKey: "write-key",
     endpoint: "https://analytics.example.test",
     userId: "user-1",
+    consent: "granted",
     featureFlagTransport: {
       async evaluate(request) {
         calls += 1;
