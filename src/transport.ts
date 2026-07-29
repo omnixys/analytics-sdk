@@ -1,4 +1,10 @@
-import type { AnalyticsBatch, AnalyticsTransport } from "./types.js";
+import type {
+  AnalyticsBatch,
+  AnalyticsTransport,
+  FeatureFlagEvaluation,
+  FeatureFlagEvaluationRequest,
+  FeatureFlagTransport,
+} from "./types.js";
 
 export class AnalyticsTransportError extends Error {
   constructor(
@@ -47,5 +53,55 @@ export class FetchAnalyticsTransport implements AnalyticsTransport {
         retryable,
       );
     }
+  }
+}
+
+export class FetchFeatureFlagTransport implements FeatureFlagTransport {
+  private readonly url: string;
+
+  constructor(
+    endpoint: string,
+    private readonly writeKey: string,
+    private readonly fetcher: typeof fetch = fetch,
+  ) {
+    this.url = `${endpoint.replace(/\/+$/, "")}/v1/analytics/flags/evaluate`;
+  }
+
+  async evaluate(
+    request: FeatureFlagEvaluationRequest,
+  ): Promise<FeatureFlagEvaluation[]> {
+    let response: Response;
+    try {
+      response = await this.fetcher(this.url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.writeKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+    } catch (error) {
+      throw new AnalyticsTransportError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    if (!response.ok) {
+      throw new AnalyticsTransportError(
+        `Feature flag evaluation failed with HTTP ${response.status}`,
+        response.status,
+        response.status === 429 || response.status >= 500,
+      );
+    }
+    const payload = (await response.json()) as {
+      evaluations?: FeatureFlagEvaluation[];
+    };
+    if (!Array.isArray(payload.evaluations)) {
+      throw new AnalyticsTransportError(
+        "Feature flag evaluation returned an invalid response",
+        response.status,
+        false,
+      );
+    }
+    return payload.evaluations;
   }
 }

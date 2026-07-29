@@ -2,6 +2,7 @@ import { sanitizeProperties } from "./sanitize.js";
 import {
   AnalyticsTransportError,
   FetchAnalyticsTransport,
+  FetchFeatureFlagTransport,
 } from "./transport.js";
 import type {
   AnalyticsBatch,
@@ -10,6 +11,8 @@ import type {
   AnalyticsEventType,
   ConsentState,
   EventOptions,
+  FeatureFlagEvaluation,
+  FeatureFlagValue,
 } from "./types.js";
 
 const SDK_NAME = "@omnixys/analytics-sdk";
@@ -17,6 +20,12 @@ const SDK_VERSION = "1.0.0";
 
 export class AnalyticsClient {
   private readonly transport;
+  private readonly featureFlagTransport;
+  private readonly featureFlagCacheTtlMs: number;
+  private readonly featureFlagCache = new Map<
+    string,
+    { expiresAt: number; evaluation: FeatureFlagEvaluation }
+  >();
   private readonly queue: AnalyticsEvent[] = [];
   private readonly flushAt: number;
   private readonly flushIntervalMs: number;
@@ -51,6 +60,14 @@ export class AnalyticsClient {
     this.transport =
       config.transport ??
       new FetchAnalyticsTransport(config.endpoint, config.writeKey);
+    this.featureFlagTransport =
+      config.featureFlagTransport ??
+      new FetchFeatureFlagTransport(config.endpoint, config.writeKey);
+    this.featureFlagCacheTtlMs = bounded(
+      config.featureFlagCacheTtlMs ?? 30_000,
+      1_000,
+      5 * 60_000,
+    );
     if (this.enabled) {
       this.timer = setInterval(() => void this.flush(), this.flushIntervalMs);
       (this.timer as unknown as { unref?: () => void }).unref?.();
@@ -114,6 +131,45 @@ export class AnalyticsClient {
     if (consent === "denied") this.queue.length = 0;
   }
 
+  async getFeatureFlag(
+    key: string,
+    fallback: FeatureFlagValue,
+    facts: Record<string, unknown> = {},
+  ): Promise<FeatureFlagValue> {
+    const evaluation = await this.getFeatureFlagEvaluation(key, facts);
+    return evaluation?.value ?? fallback;
+  }
+
+  async getFeatureFlagEvaluation(
+    key: string,
+    facts: Record<string, unknown> = {},
+  ): Promise<FeatureFlagEvaluation | undefined> {
+    if (!this.enabled) return undefined;
+    const subjectId = this.userId ?? this.anonymousId;
+    const cacheKey = `${key}:${subjectId}:${stableJson(facts)}`;
+    const cached = this.featureFlagCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.evaluation;
+    const evaluations = await this.featureFlagTransport.evaluate({
+      keys: [key],
+      subjectId,
+      anonymousId: this.anonymousId,
+      sessionId: this.sessionId,
+      facts: sanitizeProperties(facts),
+    });
+    const evaluation = evaluations.find((item) => item.key === key);
+    if (evaluation) {
+      this.featureFlagCache.set(cacheKey, {
+        expiresAt: Date.now() + this.featureFlagCacheTtlMs,
+        evaluation,
+      });
+    }
+    return evaluation;
+  }
+
+  reloadFeatureFlags(): void {
+    this.featureFlagCache.clear();
+  }
+
   async flush(): Promise<void> {
     if (this.flushing) return this.flushing;
     if (!this.enabled || this.consent === "denied" || this.queue.length === 0) {
@@ -144,6 +200,7 @@ export class AnalyticsClient {
     this.anonymousId = randomId();
     this.sessionId = randomId();
     this.lastActivity = Date.now();
+    this.featureFlagCache.clear();
   }
 
   async shutdown(): Promise<void> {
@@ -202,6 +259,16 @@ function randomId(): string {
 function bounded(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function stableJson(value: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(sanitizeProperties(value)).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+  );
 }
 
 export function createAnalytics(config: AnalyticsConfig): AnalyticsClient {

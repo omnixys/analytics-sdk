@@ -34,6 +34,36 @@ export interface AnalyticsTransport {
   send(batch: AnalyticsBatch): Promise<void>;
 }
 
+export type FeatureFlagValue =
+  | string
+  | number
+  | boolean
+  | Record<string, unknown>;
+
+export interface FeatureFlagEvaluation {
+  key: string;
+  flagId: string;
+  version: number;
+  variant: string;
+  value: FeatureFlagValue;
+  reason: "OFF" | "DEFAULT" | "RULE_MATCH" | "ROLLOUT_EXCLUDED";
+  ruleId?: string;
+}
+
+export interface FeatureFlagEvaluationRequest {
+  keys: string[];
+  subjectId: string;
+  anonymousId?: string;
+  sessionId?: string;
+  facts: Record<string, unknown>;
+}
+
+export interface FeatureFlagTransport {
+  evaluate(
+    request: FeatureFlagEvaluationRequest,
+  ): Promise<FeatureFlagEvaluation[]>;
+}
+
 export interface AnalyticsConfig {
   writeKey: string;
   endpoint: string;
@@ -46,6 +76,8 @@ export interface AnalyticsConfig {
   sessionTimeoutMs?: number;
   schemaVersion?: string;
   transport?: AnalyticsTransport;
+  featureFlagTransport?: FeatureFlagTransport;
+  featureFlagCacheTtlMs?: number;
   context?: () => Record<string, unknown>;
 }
 

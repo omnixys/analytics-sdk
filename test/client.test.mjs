@@ -60,3 +60,43 @@ test("requeues retryable transport failures", async () => {
   client.setConsent("denied");
   await client.shutdown();
 });
+
+test("evaluates and caches feature flags per subject and facts", async () => {
+  let calls = 0;
+  const client = new AnalyticsClient({
+    writeKey: "write-key",
+    endpoint: "https://analytics.example.test",
+    userId: "user-1",
+    featureFlagTransport: {
+      async evaluate(request) {
+        calls += 1;
+        return [
+          {
+            key: request.keys[0],
+            flagId: "flag-1",
+            version: 2,
+            variant: "enabled",
+            value: true,
+            reason: "RULE_MATCH",
+          },
+        ];
+      },
+    },
+    transport: { async send() {} },
+  });
+
+  assert.equal(await client.getFeatureFlag("new-checkout", false, {
+    country: "DE",
+  }), true);
+  assert.equal(await client.getFeatureFlag("new-checkout", false, {
+    country: "DE",
+  }), true);
+  assert.equal(calls, 1);
+
+  client.reloadFeatureFlags();
+  assert.equal(await client.getFeatureFlag("new-checkout", false, {
+    country: "DE",
+  }), true);
+  assert.equal(calls, 2);
+  await client.shutdown();
+});
