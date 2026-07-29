@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { access } from "node:fs/promises";
 import test from "node:test";
 import {
   AnalyticsClient,
@@ -99,4 +100,12 @@ test("evaluates and caches feature flags per subject and facts", async () => {
   }), true);
   assert.equal(calls, 2);
   await client.shutdown();
+});
+
+test("emits every documented framework subpath", async () => {
+  await Promise.all(
+    ["browser", "node", "react", "next", "nestjs"].map((subpath) =>
+      access(new URL(`../dist/${subpath}.js`, import.meta.url)),
+    ),
+  );
 });
