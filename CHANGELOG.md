@@ -3,6 +3,12 @@
 All notable changes in this project will be documented in this file.
 
 
+## [2.0.1](https://github.com/omnixys/analytics-sdk/compare/v2.0.0...v2.0.1) (2026-09-02)
+
+### Deps
+
+* **Deps:** update omnixys deps ([](https://github.com/omnixys/analytics-sdk/commit/e593e37e8032f8edceebff86a9b255a464735e8b))
+
 ## [2.0.0](https://github.com/omnixys/analytics-sdk/compare/v1.0.0...v2.0.0) (2026-09-02)
 
 ### Agent
