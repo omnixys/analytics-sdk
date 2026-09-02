@@ -93,6 +93,29 @@ test("parallel 401 responses share exactly one token refresh", async () => {
   assert.equal(providerCalls, 2);
 });
 
+test("maps HTTP 503 ingestion failures to retryable transport errors", async () => {
+  const { FetchAnalyticsTransport } = await import("../dist/transport.js");
+  const transport = new FetchAnalyticsTransport(
+    "https://analytics.example.test",
+    "write-key",
+    async () => new Response(null, { status: 503 }),
+  );
+
+  await assert.rejects(
+    transport.send({
+      batchId: crypto.randomUUID(),
+      sentAt: new Date().toISOString(),
+      events: [],
+    }),
+    (error) => {
+      assert.equal(error.name, "AnalyticsTransportError");
+      assert.equal(error.status, 503);
+      assert.equal(error.retryable, true);
+      return true;
+    },
+  );
+});
+
 test("requeues retryable transport failures", async () => {
   const client = new AnalyticsClient({
     writeKey: "write-key",

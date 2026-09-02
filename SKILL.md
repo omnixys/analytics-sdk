@@ -9,7 +9,7 @@
 
 - Kind: Shared Package
 - Package: `@omnixys/analytics-sdk` (version: 1.0.0)
-- Runtime: Node >=20 (pnpm >=10.33.0)
+- Runtime: Node >=26.8.1 (pnpm >=11.24.0)
 - Description: Omnixys analytics SDK for TypeScript.
 - Architecture: src/ analytics SDK
 - Database: n/a; Migrations: n/a
