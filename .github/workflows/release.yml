@@ -70,7 +70,7 @@ jobs:
         run: |
           gh variable set CURRENT_VERSION \
             --body "$CURRENT_VERSION" \
-            --repo omnixys/${{ vars.PACKAGE }}-sdk
+            --repo omnixys/${{ vars.PACKAGE }}-ts
 
       - name: Update org variable
         env:
@@ -111,6 +111,14 @@ jobs:
         with:
           node-version: '26.8.1'
           cache: 'pnpm'
+
+      - name: Setup npm registry auth
+        run: |
+          echo "@omnixys:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${OMNIXYS_TOKEN}" >> .npmrc
+        env:
+          OMNIXYS_TOKEN: ${{ secrets.OMNIXYS_TOKEN }}
+
 
       - run: pnpm install
       - run: pnpm build
