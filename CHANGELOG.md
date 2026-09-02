@@ -3,6 +3,30 @@
 All notable changes in this project will be documented in this file.
 
 
+## [2.0.0](https://github.com/omnixys/analytics-sdk/compare/v1.0.0...v2.0.0) (2026-09-02)
+
+### Agent
+
+* **Agent:** add repository development instructions ([](https://github.com/omnixys/analytics-sdk/commit/98df806994de24d7a83a5d24eb208302db22ab45))
+
+### Ci
+
+* **Ci:** add missing labeler and dependabot config to match contracts ([](https://github.com/omnixys/analytics-sdk/commit/e13d3b86d1a5a2f13c0f07fcaf8591bdc66817ea))
+* **Ci:** add PR build check workflow for main ([](https://github.com/omnixys/analytics-sdk/commit/bbf976e8ea1d8ea3bb6abaacffb8e43b1aaf0802))
+* **Ci:** add npm registry auth before install in release workflow ([](https://github.com/omnixys/analytics-sdk/commit/a003bebc31a77be1c4753895c68bc91de3504a33))
+
+### Deps
+
+* **Deps:** update omnixys deps ([](https://github.com/omnixys/analytics-sdk/commit/9000edb04093d1db991da8465a3800870ac16dee))
+
+### Other
+
+* **Other:** Merge pull request #1 from omnixys/migration/uuid-v7 ([](https://github.com/omnixys/analytics-sdk/commit/962afded0d82d4333b4d3fb797d9b70951caaf3c)), closes [#1](https://github.com/omnixys/analytics-sdk/issues/1)
+
+### Runtime
+
+* **Runtime:** require node 26.8.1 and pnpm 11.24.0 ([](https://github.com/omnixys/analytics-sdk/commit/077a2c560735b209b6825bb04aea6d7d84561286))
+
 ## 1.0.0 (2026-07-30)
 
 ### Ci
